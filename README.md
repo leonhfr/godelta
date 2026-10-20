@@ -1,6 +1,6 @@
 # godelta
 
-Generate a Mermaid call graph of Go function changes in a local Git checkout or a GitHub pull request.
+Generate a call graph of Go function changes in a local Git checkout or a GitHub pull request.
 
 ## Usage
 
@@ -23,7 +23,16 @@ godelta --help
 
 Use `./godelta` when reviewing this checkout, or put the built binary on your PATH for other repositories. Working-tree mode includes staged edits, unstaged edits, and nonignored untracked files. Staged mode excludes unstaged edits and files marked only with `git add -N`. `--head` requires `--base`; `--staged` cannot be combined with either.
 
-Stdout contains one raw Mermaid flowchart. Stderr reports resolved revisions, the active Go platform and flags, omitted context, and unresolved call counts. No function changes produces a valid explanatory diagram and a successful exit. Invalid inputs, analysis failures, and output failures produce a nonzero exit.
+Output defaults to `--format auto`: a Unicode box diagram when stdout is a terminal, or one raw Mermaid flowchart when piped or redirected. Both local and PR commands accept an explicit override:
+
+```sh
+godelta --format mermaid                  # Mermaid plaintext, including in a terminal
+godelta --format terminal | less -R       # Browse a terminal graph through a pager
+godelta pr 123 --format terminal          # Terminal view of a PR
+godelta pr 123 --format mermaid > graph.mmd
+```
+
+Stderr reports resolved revisions, the active Go platform and flags, omitted context, and unresolved call counts. No function changes produces an explanation and a successful exit. Invalid inputs, analysis failures, and output failures produce a nonzero exit.
 
 ## GitHub pull requests
 
@@ -49,7 +58,11 @@ Every added, removed, or modified function appears, along with its direct projec
 | Modified | Grey |
 | Unchanged context | Pale blue |
 
-Arrows point from caller to callee. Added calls are green, removed calls are dashed red, and retained calls are grey. Nodes and arrows include status words, and the graph includes a legend.
+The terminal view uses [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) to render the same flowchart as Unicode boxes and arrows, including change groups, shared callees, cycles, and the legend. Function and call statuses remain visible as text. Labels are kept in full, so large graphs may require horizontal scrolling. Source names containing terminal controls or syntax interpreted by the renderer use escaped spellings.
+
+Terminal function colors are enabled only when stdout is a terminal, `TERM` is not `dumb`, and `NO_COLOR` is unset or empty. Piped terminal output is plain Unicode text. Removed calls use dotted arrows; terminal arrows use plain text rather than Mermaid stroke colors. The renderer is linked into the binary and needs no external executable.
+
+In Mermaid output, arrows point from caller to callee. Added calls are green, removed calls are dashed red, and retained calls are grey. Nodes and arrows include status words, and the graph includes a legend.
 
 ## Analysis scope
 

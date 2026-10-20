@@ -1,4 +1,4 @@
-// Package cli presents Go diff review as Mermaid on stdout.
+// Package cli presents Go diff review as Mermaid or a terminal graph.
 package cli
 
 import (
@@ -14,16 +14,15 @@ import (
 	"github.com/leonhfr/godelta/internal/app"
 	"github.com/leonhfr/godelta/internal/delta"
 	"github.com/leonhfr/godelta/internal/graph"
-	"github.com/leonhfr/godelta/internal/mermaid"
 	"github.com/leonhfr/godelta/internal/snapshot"
 )
 
 // ErrUsage identifies invalid command arguments.
 var ErrUsage = errors.New("invalid command arguments")
 
-// Run reviews a checkout and writes raw Mermaid with diagnostics on stderr.
+// Run reviews a checkout or PR and writes the selected format with diagnostics on stderr.
 func Run(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error {
-	result, err := review(ctx, dir, args, stderr)
+	request, err := parseRequest(args, stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
 	}
@@ -32,38 +31,49 @@ func Run(ctx context.Context, dir string, args []string, stdout, stderr io.Write
 		return err
 	}
 
+	result, err := review(ctx, dir, request)
+	if err != nil {
+		return err
+	}
+
 	if _, err = io.WriteString(stderr, diagnostics(result)); err != nil {
 		return fmt.Errorf("write review diagnostics: %w", err)
 	}
 
-	return mermaid.Render(stdout, result.Graph)
+	return render(stdout, result.Graph, request.format)
 }
 
-func review(ctx context.Context, dir string, args []string, stderr io.Writer) (app.Result, error) {
+type request struct {
+	local      snapshot.Options
+	number     int
+	repository string
+	format     format
+}
+
+func review(ctx context.Context, dir string, request request) (app.Result, error) {
+	if request.number != 0 {
+		return app.ReviewPR(ctx, dir, request.repository, request.number)
+	}
+
+	return app.Review(ctx, dir, request.local)
+}
+
+func parseRequest(args []string, stderr io.Writer) (request, error) {
 	if len(args) > 0 && args[0] == "pr" {
-		number, repo, err := parsePR(args[1:], stderr)
-		if err != nil {
-			return app.Result{}, err
-		}
-
-		return app.ReviewPR(ctx, dir, repo, number)
+		return parsePR(args[1:], stderr)
 	}
 
-	options, err := parse(args, stderr)
-	if err != nil {
-		return app.Result{}, err
-	}
-
-	return app.Review(ctx, dir, options)
+	return parse(args, stderr)
 }
 
-func parsePR(args []string, stderr io.Writer) (int, string, error) {
+func parsePR(args []string, stderr io.Writer) (request, error) {
 	flags := flag.NewFlagSet("godelta pr", flag.ContinueOnError)
 	var usage bytes.Buffer
 	flags.SetOutput(&usage)
-	var repo string
-	flags.StringVar(&repo, "repo", "", "Repository as [HOST/]OWNER/REPO (defaults to this checkout)")
-	flags.StringVar(&repo, "R", "", "Alias for --repo")
+	options := request{format: formatAuto}
+	flags.Var(&options.format, "format", "Output format: auto, mermaid, terminal")
+	flags.StringVar(&options.repository, "repo", "", "Repository as [HOST/]OWNER/REPO (defaults to this checkout)")
+	flags.StringVar(&options.repository, "R", "", "Alias for --repo")
 	// The documented number-first form must also accept flags after the number.
 	numberText := ""
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -74,33 +84,34 @@ func parsePR(args []string, stderr io.Writer) (int, string, error) {
 	parseErr := flags.Parse(args)
 	if usage.Len() != 0 {
 		if _, err := io.WriteString(stderr, usage.String()); err != nil {
-			return 0, "", fmt.Errorf("write command usage: %w", err)
+			return request{}, fmt.Errorf("write command usage: %w", err)
 		}
 	}
 
 	if errors.Is(parseErr, flag.ErrHelp) {
-		return 0, "", parseErr
+		return request{}, parseErr
 	}
 
 	if parseErr != nil {
-		return 0, "", fmt.Errorf("%w: %w", ErrUsage, parseErr)
+		return request{}, fmt.Errorf("%w: %w", ErrUsage, parseErr)
 	}
 
 	if numberText == "" && flags.NArg() == 1 {
 		numberText = flags.Arg(0)
 	} else if flags.NArg() != 0 {
-		return 0, "", ErrUsage
+		return request{}, ErrUsage
 	}
 
 	number, err := strconv.Atoi(numberText)
 	if err != nil || number <= 0 || strconv.Itoa(number) != numberText {
-		return 0, "", fmt.Errorf("%w: pr requires a positive PR number", ErrUsage)
+		return request{}, fmt.Errorf("%w: pr requires a positive PR number", ErrUsage)
 	}
 
-	return number, repo, nil
+	options.number = number
+	return options, nil
 }
 
-func parse(args []string, stderr io.Writer) (snapshot.Options, error) {
+func parse(args []string, stderr io.Writer) (request, error) {
 	flags := flag.NewFlagSet("godelta", flag.ContinueOnError)
 	var usage bytes.Buffer
 	flags.SetOutput(&usage)
@@ -109,27 +120,28 @@ func parse(args []string, stderr io.Writer) (snapshot.Options, error) {
 		flags.PrintDefaults()
 	}
 
-	var options snapshot.Options
-	flags.BoolVar(&options.Staged, "staged", false, "Compare HEAD with staged content only")
-	flags.StringVar(&options.Base, "base", "", "Compare from the merge base of this revision and the selected head")
-	flags.StringVar(&options.Head, "head", "", "Compare a committed head instead of the working tree (requires --base)")
+	options := request{format: formatAuto}
+	flags.Var(&options.format, "format", "Output format: auto, mermaid, terminal")
+	flags.BoolVar(&options.local.Staged, "staged", false, "Compare HEAD with staged content only")
+	flags.StringVar(&options.local.Base, "base", "", "Compare from the merge base of this revision and the selected head")
+	flags.StringVar(&options.local.Head, "head", "", "Compare a committed head instead of the working tree (requires --base)")
 	parseErr := flags.Parse(args)
 	if usage.Len() != 0 {
 		if _, err := io.WriteString(stderr, usage.String()); err != nil {
-			return snapshot.Options{}, fmt.Errorf("write command usage: %w", err)
+			return request{}, fmt.Errorf("write command usage: %w", err)
 		}
 	}
 
 	if err := parseErr; err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return snapshot.Options{}, err
+			return request{}, err
 		}
 
-		return snapshot.Options{}, fmt.Errorf("%w: %w", ErrUsage, err)
+		return request{}, fmt.Errorf("%w: %w", ErrUsage, err)
 	}
 
 	if flags.NArg() != 0 {
-		return snapshot.Options{}, fmt.Errorf("%w: unexpected arguments %q", ErrUsage, flags.Args())
+		return request{}, fmt.Errorf("%w: unexpected arguments %q", ErrUsage, flags.Args())
 	}
 
 	return options, nil

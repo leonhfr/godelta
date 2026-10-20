@@ -98,6 +98,13 @@ esac
 	assert.Equal(t, originalIndex, afterIndex)
 	assert.Equal(t, originalRefs, commandOutput(t, repo, "git", "show-ref"))
 
+	var localTree, prTree bytes.Buffer
+	require.NoError(t, cli.Run(t.Context(), repo, []string{"--base", "main", "--head", "feature", "--format", "terminal"}, &localTree, &stderr))
+	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"pr", "123", "--repo", "owner/project", "--format", "terminal"}, &prTree, &stderr))
+	assert.Equal(t, localTree.String(), prTree.String())
+	assert.Contains(t, prTree.String(), "Changed · modified")
+	assert.NotContains(t, prTree.String(), "flowchart LR")
+
 	write(t, fixture, "pr.json", "invalid JSON")
 	stdout.Reset()
 	require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), []string{"pr", "123"}, &stdout, &stderr), github.ErrInvalidResponse)

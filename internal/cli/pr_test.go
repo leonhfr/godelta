@@ -24,12 +24,12 @@ func TestParsePR(t *testing.T) {
 			t.Parallel()
 
 			var stderr bytes.Buffer
-			number, repo, err := parsePR(args, &stderr)
+			options, err := parsePR(args, &stderr)
 			require.NoError(t, err)
-			assert.Equal(t, 123, number)
+			assert.Equal(t, 123, options.number)
 
 			if len(args) > 1 {
-				assert.Equal(t, "owner/project", repo)
+				assert.Equal(t, "owner/project", options.repository)
 			}
 
 			assert.Empty(t, stderr.String())
@@ -38,17 +38,17 @@ func TestParsePR(t *testing.T) {
 
 	for _, args := range [][]string{{}, {"0"}, {"-1"}, {"abc"}, {"123", "456"}, {"123", "--staged"}, {"123", "--repo"}, {"999999999999999999999999999"}} {
 		var stderr bytes.Buffer
-		_, _, err := parsePR(args, &stderr)
+		_, err := parsePR(args, &stderr)
 		require.ErrorIs(t, err, ErrUsage)
 	}
 
 	var stderr bytes.Buffer
-	_, _, err := parsePR([]string{"--help"}, &stderr)
+	_, err := parsePR([]string{"--help"}, &stderr)
 	require.ErrorIs(t, err, flag.ErrHelp)
 	assert.Contains(t, stderr.String(), "repo")
 
 	cause := errors.New("write failed")
-	_, _, err = parsePR([]string{"--help"}, failedPRWriter{err: cause})
+	_, err = parsePR([]string{"--help"}, failedPRWriter{err: cause})
 	require.ErrorIs(t, err, cause)
 }
 

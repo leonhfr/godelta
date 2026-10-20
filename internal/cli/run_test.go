@@ -98,6 +98,8 @@ func TestRunArgumentErrors(t *testing.T) {
 		want error
 	}{
 		{args: []string{"--unknown"}, want: cli.ErrUsage},
+		{args: []string{"--format", "json"}, want: cli.ErrUsage},
+		{args: []string{"pr", "123", "--format", "json"}, want: cli.ErrUsage},
 		{args: []string{"123"}, want: cli.ErrUsage},
 		{args: []string{"--staged", "--base", "HEAD"}, want: snapshot.ErrInvalidOptions},
 		{args: []string{"--head", "HEAD"}, want: snapshot.ErrInvalidOptions},
@@ -205,6 +207,30 @@ func TestRunBuildTagsAndFailureCleanup(t *testing.T) {
 	matches, err := filepath.Glob(filepath.Join(temporary, "godelta-*"))
 	require.NoError(t, err)
 	assert.Empty(t, matches)
+}
+
+func TestRunTerminalFormat(t *testing.T) {
+	t.Parallel()
+
+	repo := repository(t)
+	write(t, repo, "source.go", "package fixture\nfunc Caller(){Changed()}\nfunc Changed(){Added()}\nfunc Added(){}\nfunc Unrelated(){}\n")
+	var stdout, stderr bytes.Buffer
+	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, &stdout, &stderr))
+	assert.Contains(t, stdout.String(), "Change group 1")
+	assert.Contains(t, stdout.String(), "Caller · unchanged")
+	assert.Contains(t, stdout.String(), "retained")
+	assert.Contains(t, stdout.String(), "Changed · modified")
+	assert.Contains(t, stdout.String(), "Added · added")
+	assert.Contains(t, stdout.String(), "Removed · removed")
+	assert.NotContains(t, stdout.String(), "Unrelated")
+	assert.NotContains(t, stdout.String(), "flowchart")
+	assert.NotContains(t, stdout.String(), "\x1b")
+	assert.Contains(t, stderr.String(), "comparison: working-tree")
+	require.ErrorIs(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, failingWriter{}, io.Discard), io.ErrClosedPipe)
+
+	stdout.Reset()
+	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "mermaid"}, &stdout, io.Discard))
+	assert.True(t, strings.HasPrefix(stdout.String(), "flowchart LR\n"))
 }
 
 func repository(t *testing.T) string {
