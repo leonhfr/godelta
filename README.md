@@ -6,7 +6,9 @@ The analysis foundation loads a single module, inventories functions and methods
 
 Snapshots currently require a module at the repository root. Workspaces, nested modules, local module replacements, symlinks, submodules, and sparse working checkouts are unsupported and produce explicit errors.
 
-Function/edge deltas and Mermaid output are not implemented yet; the executable remains a placeholder.
+The delta layer classifies functions as added, removed, modified, or unchanged and calls as added, removed, or retained. It preserves both versions of each function for source locations and diagnostics, with deterministic ordering and no mutation of the input snapshots. Renames and package moves appear as removal plus addition; moves between files within a package preserve function identity.
+
+Scoped graph selection and Mermaid output are not implemented yet; the executable remains a placeholder.
 
 ## Development
 

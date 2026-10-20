@@ -1,0 +1,56 @@
+-- go.mod --
+module example.com/fixture
+
+go 1.27.1
+-- functions.go --
+package fixture
+
+import "example.com/fixture/helper"
+
+const Threshold = 2
+
+var Global = "after"
+
+type Worker struct{ Value string }
+
+func Entry() {
+	var worker Worker
+	worker.Run()
+	helper.Kept()
+	Changed()
+	Added()
+	Generic(1)
+	Generic("value")
+}
+
+func Changed() int { return 2 }
+
+func Added() { Added() }
+
+func (Worker) Run() {}
+
+func Generic[T any](value T) T { return value }
+
+func Closures() {
+	func() { Added() }()
+}
+
+// Unchanged has only comment and whitespace edits.
+func Unchanged( ) {
+	/* intentionally empty */
+}
+
+func init() { Added() }
+-- moved.go --
+package fixture
+
+// Moved is in a different file now.
+func Moved() {}
+
+func RenamedNew() {}
+-- helper/helper.go --
+package helper
+
+func Kept() int { return 2 }
+
+func Caller() { Kept() }

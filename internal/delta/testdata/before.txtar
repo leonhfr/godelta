@@ -1,0 +1,52 @@
+-- go.mod --
+module example.com/fixture
+
+go 1.27.1
+-- functions.go --
+package fixture
+
+import "example.com/fixture/helper"
+
+const Threshold = 1
+
+var Global = "before"
+
+type Worker struct{ Value int }
+
+func Entry() {
+	var worker Worker
+	worker.Run()
+	helper.Kept()
+	Changed()
+	Removed()
+	Generic(1)
+	Generic("value")
+}
+
+func Changed() int { return 1 }
+
+func Removed() { Removed() }
+
+func (*Worker) Run() {}
+
+func Generic[T any](value T) T { return value }
+
+func Closures() {
+	func() { Removed() }()
+}
+
+func Unchanged() {}
+
+func init() { Removed() }
+-- stable.go --
+package fixture
+
+func Moved() {}
+
+func RenamedOld() {}
+-- helper/helper.go --
+package helper
+
+func Kept() int { return 1 }
+
+func Caller() { Kept() }
