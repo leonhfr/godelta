@@ -1,91 +1,80 @@
 # godelta
 
-Generate a call graph of Go function changes in a local Git checkout or a GitHub pull request.
+See how Go functions change in a local diff or GitHub pull request. Godelta builds a call graph scoped to the changes, with enough surrounding code to see their connections.
 
-## Usage
+## Install
 
-Build with the pinned Go toolchain:
-
-```sh
-mise install
-mise exec -- go build -o godelta .
-```
-
-Run the binary from the Go repository you want to review, or any subdirectory of it:
+Install with Homebrew:
 
 ```sh
-godelta > graph.mmd                       # HEAD versus the working tree
-godelta --staged > graph.mmd              # HEAD versus staged content only
-godelta --base main > graph.mmd           # Merge base with main versus the working tree
-godelta --base main --head HEAD > graph.mmd # Merge base with main versus committed HEAD
-godelta --help
+brew install leonhfr/tap/godelta
 ```
 
-Use `./godelta` when reviewing this checkout, or put the built binary on your PATH for other repositories. Working-tree mode includes staged edits, unstaged edits, and nonignored untracked files. Staged mode excludes unstaged edits and files marked only with `git add -N`. `--head` requires `--base`; `--staged` cannot be combined with either.
+Or download a Linux or macOS binary (amd64 or arm64) from [Releases](https://github.com/leonhfr/godelta/releases). Go and Git must be installed to analyze projects. PR mode also needs an authenticated [GitHub CLI](https://cli.github.com/).
 
-Output defaults to `--format auto`: a Unicode box diagram when stdout is a terminal, or one raw Mermaid flowchart when piped or redirected. Both local and PR commands accept an explicit override:
+## Local changes
+
+Run from a Go repository or one of its subdirectories:
 
 ```sh
-godelta --format mermaid                  # Mermaid plaintext, including in a terminal
-godelta --format terminal | less -R       # Browse a terminal graph through a pager
-godelta pr 123 --format terminal          # Terminal view of a PR
-godelta pr 123 --format mermaid > graph.mmd
+godelta                           # HEAD → working tree, including untracked files
+godelta --staged                  # HEAD → staged changes only
+godelta --base main               # Merge base with main → working tree
+godelta --base main --head HEAD   # Merge base with main → committed HEAD
 ```
 
-Stderr reports resolved revisions, the active Go platform and flags, omitted context, and unresolved call counts. No function changes produces an explanation and a successful exit. Invalid inputs, analysis failures, and output failures produce a nonzero exit.
+`--staged` cannot be combined with `--base` or `--head`. `--head` requires `--base`.
 
-## GitHub pull requests
-
-Install and authenticate [GitHub CLI](https://cli.github.com/manual/gh_auth_login), then select a PR:
+## Pull requests
 
 ```sh
-godelta pr 123 > graph.mmd                       # Repository inferred from the checkout
-godelta pr 123 --repo owner/project > graph.mmd  # Works outside a checkout too
-godelta pr 123 -R github.example/owner/project > graph.mmd
-godelta pr --help
+gh auth login
+godelta pr 123                          # Infer the repository from the checkout
+godelta pr 123 -R owner/project         # Run from anywhere
+godelta pr 123 -R github.example/owner/project
 ```
 
-PR mode compares the merge base with the PR head, including fork PRs. Metadata comes from `gh`; Git fetches the required revisions into a temporary bare repository using `gh` credentials. Local branches, refs, index, and working files are untouched. Local edits do not enter a PR comparison. If the head moves between metadata lookup and fetch, rerun the command. PR URLs and resolved commits appear on stderr.
+PR mode compares the merge base with the PR head, including fork PRs. Local changes are excluded. Both modes use temporary snapshots and leave your working tree, index, branches, and refs untouched.
 
-## Reading the graph
+## Output
 
-Every added, removed, or modified function appears, along with its direct project-local callers and callees from either revision. Context does not expand recursively. Disconnected groups share one flowchart, with up to 50 unchanged context functions per group. Changed functions never count against that limit and are never omitted. Context is selected in canonical name order, with omission counts on stderr.
+A terminal gets a Unicode diagram rendered with [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii). A pipe or file gets raw Mermaid:
 
-| Function status | Color |
+```sh
+godelta > graph.mmd
+godelta pr 123 --format mermaid > pr.mmd
+godelta --format mermaid                 # Mermaid plaintext in a terminal
+godelta --format terminal | less -RS     # Browse a wide terminal diagram
+```
+
+Every added, removed, or modified function appears with its direct callers and callees from either revision. Context stops at one hop and is limited to 50 unchanged functions per connected group; changed functions are always kept. Diagnostics and omission counts go to stderr.
+
+| Function | Color |
 | --- | --- |
 | Added | Green |
 | Removed | Red |
 | Modified | Grey |
 | Unchanged context | Pale blue |
 
-The terminal view uses [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) to render the same flowchart as Unicode boxes and arrows, including change groups, shared callees, cycles, and the legend. Function and call statuses remain visible as text. Labels are kept in full, so large graphs may require horizontal scrolling. Source names containing terminal controls or syntax interpreted by the renderer use escaped spellings.
+Arrows point from caller to callee and are labelled added, removed, or retained. Removed arrows are dotted in the terminal and dashed red in Mermaid. Terminal colors respect `NO_COLOR` and `TERM=dumb`. Large diagrams may need horizontal scrolling.
 
-Terminal function colors are enabled only when stdout is a terminal, `TERM` is not `dumb`, and `NO_COLOR` is unset or empty. Piped terminal output is plain Unicode text. Removed calls use dotted arrows; terminal arrows use plain text rather than Mermaid stroke colors. The renderer is linked into the binary and needs no external executable.
+## Scope
 
-In Mermaid output, arrows point from caller to callee. Added calls are green, removed calls are dashed red, and retained calls are grey. Nodes and arrows include status words, and the graph includes a legend.
+- Functions and methods are compared by signature and body, ignoring formatting and comments. Global variables, constants, and struct changes do not seed the graph.
+- Renames and package moves appear as removal plus addition. Anonymous functions use `Parent.anonymous.1`; init functions use `file.go.init.1`. Numbering follows source order and may shift after insertions.
+- Direct calls, concrete methods, and generic calls are resolved. Interface dispatch and function-value calls are counted as unresolved, without guessed targets.
+- Tests, generated functions, vendor code, and external dependency nodes are excluded.
+- One module at the repository root is supported, with any number of packages. Workspaces, local replacements, nested modules outside fixture/vendor/hidden directories, symlinks, submodules, and sparse checkouts are unsupported.
+- Both revisions must type-check under the active Go build configuration. Select build tags with `GOFLAGS='-tags=integration'`. Package loading may download dependencies; Godelta does not run project tests, binaries, or generators.
 
-## Analysis scope
-
-Functions are matched by package, receiver type, and name, and compared by their signatures and bodies. Formatting and comments are ignored. File moves within a package preserve identity; renames and package moves appear as removal plus addition. Global variables, constants, and struct declarations do not seed changes.
-
-Anonymous functions have separate nodes named after their parent, such as `Save.anonymous.1`. Init declarations use file names, such as `storage.go.init.1`. Counters follow source order and may shift after insertions. Calls inside a closure belong to the closure; declaring it does not imply calling it.
-
-Direct calls, concrete methods, generic calls, and immediately invoked function literals are resolved. Interface dispatch and calls through function values are counted as unresolved; targets are not guessed. Tests, generated functions, vendor functions, and external dependency nodes are excluded. Analysis covers only the active build configuration; use Go environment settings such as `GOFLAGS='-tags=integration'` to select build tags.
-
-The repository must contain one module at its root. Workspaces, actual nested modules, local module replacements, symlinks, submodules, and sparse working checkouts are currently unsupported. Nested testdata, vendor, and hidden module fixtures are outside layout checks. A committed HEAD and analyzable code on both sides are required.
-
-Snapshots are copied into temporary directories without checking out revisions, writing the index, or moving refs, and are removed on success or failure. Supporting files, including embedded assets, are copied too. The tool never runs project binaries, tests, or generators. Go tooling must be installed; package loading may resolve dependencies using Go's module cache and network settings. Module files are loaded read-only.
-
-The GitHub CLI extension entry point is planned. Local review does not require `gh`.
+No function changes is a successful result. Use `godelta --help`, `godelta pr --help`, or `godelta --version` for command information.
 
 ## Development
 
-Use the pinned tools and Git hooks from `mise install`:
-
 ```sh
-mise run fix    # Apply formatting and available fixes without staging files
-mise run check  # Verify formatting, lint, module tidiness, and race tests
-mise run test   # Run race tests independently
+mise install
+mise exec -- go build -o godelta .
+mise run fix          # Format and apply available fixes
+mise run check        # Lint, configuration checks, and race tests
+mise run goreleaser   # Build snapshot release archives without publishing
 ```
-
-The check and fix tasks build `bin/godelta-golangci-lint` with the custom `commentlen`, `goblanklines`, `goexpand`, and `goparamorder` linters. Tests use Testify; error assertions use error categories and structured diagnostics rather than message matching.

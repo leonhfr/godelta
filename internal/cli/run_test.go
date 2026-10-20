@@ -54,7 +54,7 @@ func TestRunLocalModes(t *testing.T) {
 			require.NoError(t, err)
 
 			var stdout, stderr bytes.Buffer
-			require.NoError(t, cli.Run(t.Context(), repo, test.args, &stdout, &stderr))
+			require.NoError(t, cli.Run(t.Context(), repo, test.args, &stdout, &stderr, "dev"))
 			assert.Contains(t, stderr.String(), "comparison: "+test.mode)
 			assert.Contains(t, stderr.String(), "build: ")
 			assert.True(t, strings.HasPrefix(stdout.String(), "flowchart LR\n"))
@@ -80,7 +80,7 @@ func TestRunLocalModes(t *testing.T) {
 			}
 
 			var repeated, diagnostics bytes.Buffer
-			require.NoError(t, cli.Run(t.Context(), repo, test.args, &repeated, &diagnostics))
+			require.NoError(t, cli.Run(t.Context(), repo, test.args, &repeated, &diagnostics, "dev"))
 			assert.Equal(t, stdout.String(), repeated.String())
 
 			afterIndex, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
@@ -109,7 +109,7 @@ func TestRunArgumentErrors(t *testing.T) {
 			t.Parallel()
 
 			var stdout, stderr bytes.Buffer
-			require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), test.args, &stdout, &stderr), test.want)
+			require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), test.args, &stdout, &stderr, "dev"), test.want)
 			assert.Empty(t, stdout.String())
 		})
 	}
@@ -119,7 +119,7 @@ func TestRunHelpOutsideRepository(t *testing.T) {
 	t.Parallel()
 
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, &stderr))
+	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, &stderr, "dev"))
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "Usage: godelta")
 	assert.Contains(t, stderr.String(), "staged")
@@ -129,7 +129,7 @@ func TestRunHelpWriteFailure(t *testing.T) {
 	t.Parallel()
 
 	var stdout bytes.Buffer
-	require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, failingWriter{}), io.ErrClosedPipe)
+	require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, failingWriter{}, "dev"), io.ErrClosedPipe)
 	assert.Empty(t, stdout.String())
 }
 
@@ -153,7 +153,7 @@ func TestRunContextAndDynamicDiagnostics(t *testing.T) {
 	git(t, repo, "commit", "--no-gpg-sign", "-m", "context fixture")
 	write(t, repo, "source.go", strings.Replace(source.String(), "callback();", "callback(); Context55();", 1))
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr))
+	require.NoError(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr, "dev"))
 	assert.Contains(t, stderr.String(), "omitted 6 unchanged context functions (limit 50)")
 	assert.Contains(t, stderr.String(), "unresolved calls: .:Changed (before 1; after 1)")
 	assert.NotContains(t, stdout.String(), "Context50")
@@ -177,7 +177,7 @@ func TestRunStreamFailures(t *testing.T) {
 				stderr = failingWriter{}
 			}
 
-			require.ErrorIs(t, cli.Run(t.Context(), repository(t), nil, stdout, stderr), io.ErrClosedPipe)
+			require.ErrorIs(t, cli.Run(t.Context(), repository(t), nil, stdout, stderr, "dev"), io.ErrClosedPipe)
 			assert.Empty(t, output.String())
 		})
 	}
@@ -194,14 +194,14 @@ func TestRunBuildTagsAndFailureCleanup(t *testing.T) {
 	git(t, repo, "commit", "--no-gpg-sign", "-m", "tagged fixture")
 	write(t, repo, "tagged.go", "//go:build godelta_fixture\n\npackage fixture\nfunc Tagged(){Changed()}\n")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr))
+	require.NoError(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr, "dev"))
 	assert.Contains(t, stdout.String(), "Tagged #183; modified")
 	assert.Contains(t, stderr.String(), "GOFLAGS=\"-tags=godelta_fixture\"")
 
 	write(t, repo, "source.go", "package fixture\nfunc Broken(){ missing() }\n")
 	stdout.Reset()
 	stderr.Reset()
-	require.ErrorIs(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr), analysis.ErrLoadPackages)
+	require.ErrorIs(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr, "dev"), analysis.ErrLoadPackages)
 	assert.Empty(t, stdout.String())
 
 	matches, err := filepath.Glob(filepath.Join(temporary, "godelta-*"))
@@ -215,7 +215,7 @@ func TestRunTerminalFormat(t *testing.T) {
 	repo := repository(t)
 	write(t, repo, "source.go", "package fixture\nfunc Caller(){Changed()}\nfunc Changed(){Added()}\nfunc Added(){}\nfunc Unrelated(){}\n")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, &stdout, &stderr))
+	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, &stdout, &stderr, "dev"))
 	assert.Contains(t, stdout.String(), "Change group 1")
 	assert.Contains(t, stdout.String(), "Caller · unchanged")
 	assert.Contains(t, stdout.String(), "retained")
@@ -226,10 +226,10 @@ func TestRunTerminalFormat(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "flowchart")
 	assert.NotContains(t, stdout.String(), "\x1b")
 	assert.Contains(t, stderr.String(), "comparison: working-tree")
-	require.ErrorIs(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, failingWriter{}, io.Discard), io.ErrClosedPipe)
+	require.ErrorIs(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, failingWriter{}, io.Discard, "dev"), io.ErrClosedPipe)
 
 	stdout.Reset()
-	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "mermaid"}, &stdout, io.Discard))
+	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "mermaid"}, &stdout, io.Discard, "dev"))
 	assert.True(t, strings.HasPrefix(stdout.String(), "flowchart LR\n"))
 }
 

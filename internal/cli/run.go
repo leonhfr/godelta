@@ -21,7 +21,7 @@ import (
 var ErrUsage = errors.New("invalid command arguments")
 
 // Run reviews a checkout or PR and writes the selected format with diagnostics on stderr.
-func Run(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error {
+func Run(ctx context.Context, dir string, args []string, stdout, stderr io.Writer, version string) error {
 	request, err := parseRequest(args, stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
@@ -29,6 +29,14 @@ func Run(ctx context.Context, dir string, args []string, stdout, stderr io.Write
 
 	if err != nil {
 		return err
+	}
+
+	if request.version {
+		if _, err = fmt.Fprintln(stdout, "godelta version "+version); err != nil {
+			return fmt.Errorf("write version: %w", err)
+		}
+
+		return nil
 	}
 
 	result, err := review(ctx, dir, request)
@@ -44,6 +52,7 @@ func Run(ctx context.Context, dir string, args []string, stdout, stderr io.Write
 }
 
 type request struct {
+	version    bool
 	local      snapshot.Options
 	number     int
 	repository string
@@ -122,6 +131,7 @@ func parse(args []string, stderr io.Writer) (request, error) {
 
 	options := request{format: formatAuto}
 	flags.Var(&options.format, "format", "Output format: auto, mermaid, terminal")
+	flags.BoolVar(&options.version, "version", false, "Show the version")
 	flags.BoolVar(&options.local.Staged, "staged", false, "Compare HEAD with staged content only")
 	flags.StringVar(&options.local.Base, "base", "", "Compare from the merge base of this revision and the selected head")
 	flags.StringVar(&options.local.Head, "head", "", "Compare a committed head instead of the working tree (requires --base)")

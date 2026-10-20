@@ -1,0 +1,51 @@
+version: 2
+
+project_name: godelta
+
+builds:
+  - id: godelta
+    main: .
+    binary: godelta
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - -s -w -X main.version=v{{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: godelta
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+
+brews:
+  - name: godelta
+    repository:
+      owner: leonhfr
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/leonhfr/godelta
+    description: Visualize Go function changes in local diffs and pull requests
+    license: MIT
+    install: |
+      bin.install "godelta"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/godelta --version")

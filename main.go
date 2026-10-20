@@ -10,6 +10,9 @@ import (
 	"github.com/leonhfr/godelta/internal/cli"
 )
 
+// version is set to the release tag by GoReleaser.
+var version = "dev"
+
 func main() {
 	os.Exit(execute())
 }
@@ -20,7 +23,7 @@ func execute() int {
 
 	dir, err := os.Getwd()
 	if err == nil {
-		err = cli.Run(ctx, dir, os.Args[1:], os.Stdout, os.Stderr)
+		err = cli.Run(ctx, dir, os.Args[1:], os.Stdout, os.Stderr, version)
 	}
 
 	if err != nil {
