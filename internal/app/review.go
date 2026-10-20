@@ -1,4 +1,4 @@
-// Package app coordinates local Go diff analysis for review.
+// Package app coordinates Go diff analysis for review.
 package app
 
 import (
@@ -11,6 +11,7 @@ import (
 
 	"github.com/leonhfr/godelta/internal/analysis"
 	"github.com/leonhfr/godelta/internal/delta"
+	"github.com/leonhfr/godelta/internal/github"
 	"github.com/leonhfr/godelta/internal/graph"
 	"github.com/leonhfr/godelta/internal/snapshot"
 )
@@ -25,11 +26,12 @@ type Build struct {
 
 // Result contains the selected graph and comparison metadata for presentation.
 type Result struct {
-	Graph      graph.Graph
-	Mode       snapshot.Mode
-	BaseCommit string
-	HeadCommit string
-	Build      Build
+	PullRequestURL string
+	Graph          graph.Graph
+	Mode           snapshot.Mode
+	BaseCommit     string
+	HeadCommit     string
+	Build          Build
 }
 
 // Review prepares and analyzes both revisions, selects context, and removes snapshots.
@@ -41,6 +43,28 @@ func Review(ctx context.Context, dir string, options snapshot.Options) (_ Result
 
 	defer func() { err = errors.Join(err, comparison.Close()) }()
 
+	return analyze(ctx, comparison)
+}
+
+// ReviewPR resolves a GitHub PR and analyzes isolated committed snapshots.
+func ReviewPR(ctx context.Context, dir, repository string, number int) (_ Result, err error) {
+	pr, err := (github.Client{}).Resolve(ctx, dir, repository, number)
+	if err != nil {
+		return Result{}, err
+	}
+
+	comparison, err := snapshot.PrepareRemote(ctx, pr.Remote)
+	if err != nil {
+		return Result{}, err
+	}
+	defer func() { err = errors.Join(err, comparison.Close()) }()
+
+	result, err := analyze(ctx, comparison)
+	result.PullRequestURL = pr.URL
+	return result, err
+}
+
+func analyze(ctx context.Context, comparison *snapshot.Comparison) (Result, error) {
 	build, err := buildConfiguration(ctx, comparison.Before)
 	if err != nil {
 		return Result{}, err

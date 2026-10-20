@@ -119,7 +119,7 @@ func TestRunHelpOutsideRepository(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, &stderr))
 	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "Usage of godelta:")
+	assert.Contains(t, stderr.String(), "Usage: godelta")
 	assert.Contains(t, stderr.String(), "staged")
 }
 

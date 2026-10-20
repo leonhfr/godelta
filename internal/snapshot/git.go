@@ -127,7 +127,7 @@ func (repo repository) run(ctx context.Context, args ...string) ([]byte, error) 
 
 func (repo repository) command(ctx context.Context, args ...string) *exec.Cmd {
 	//nolint:gosec // Uses a fixed executable without a shell; revision inputs follow --end-of-options.
-	command := exec.CommandContext(ctx, "git", append([]string{"-c", "core.fsmonitor=false"}, args...)...)
+	command := exec.CommandContext(ctx, "git", append([]string{"-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + os.DevNull}, args...)...)
 	command.Dir = repo.root
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(entry, "GIT_") {

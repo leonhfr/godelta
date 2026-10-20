@@ -1,6 +1,6 @@
 # godelta
 
-Generate a Mermaid call graph of Go function changes in a local Git checkout.
+Generate a Mermaid call graph of Go function changes in a local Git checkout or a GitHub pull request.
 
 ## Usage
 
@@ -24,6 +24,19 @@ godelta --help
 Use `./godelta` when reviewing this checkout, or put the built binary on your PATH for other repositories. Working-tree mode includes staged edits, unstaged edits, and nonignored untracked files. Staged mode excludes unstaged edits and files marked only with `git add -N`. `--head` requires `--base`; `--staged` cannot be combined with either.
 
 Stdout contains one raw Mermaid flowchart. Stderr reports resolved revisions, the active Go platform and flags, omitted context, and unresolved call counts. No function changes produces a valid explanatory diagram and a successful exit. Invalid inputs, analysis failures, and output failures produce a nonzero exit.
+
+## GitHub pull requests
+
+Install and authenticate [GitHub CLI](https://cli.github.com/manual/gh_auth_login), then select a PR:
+
+```sh
+godelta pr 123 > graph.mmd                       # Repository inferred from the checkout
+godelta pr 123 --repo owner/project > graph.mmd  # Works outside a checkout too
+godelta pr 123 -R github.example/owner/project > graph.mmd
+godelta pr --help
+```
+
+PR mode compares the merge base with the PR head, including fork PRs. Metadata comes from `gh`; Git fetches the required revisions into a temporary bare repository using `gh` credentials. Local branches, refs, index, and working files are untouched. Local edits do not enter a PR comparison. If the head moves between metadata lookup and fetch, rerun the command. PR URLs and resolved commits appear on stderr.
 
 ## Reading the graph
 
@@ -50,7 +63,7 @@ The repository must contain one module at its root. Workspaces, actual nested mo
 
 Snapshots are copied into temporary directories without checking out revisions, writing the index, or moving refs, and are removed on success or failure. Supporting files, including embedded assets, are copied too. The tool never runs project binaries, tests, or generators. Go tooling must be installed; package loading may resolve dependencies using Go's module cache and network settings. Module files are loaded read-only.
 
-GitHub PR input and the GitHub CLI extension are planned.
+The GitHub CLI extension entry point is planned. Local review does not require `gh`.
 
 ## Development
 
