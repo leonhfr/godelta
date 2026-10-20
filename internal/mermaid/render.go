@@ -90,7 +90,8 @@ func renderCall(diagram, styles *strings.Builder, caller, callee string, status 
 
 	case delta.CallRetained:
 		arrow = " -->|retained| "
-		style = "stroke:#6b7280"
+		// A final hex value is misread as an entity by Mermaid's preprocessing.
+		style = "stroke:#6b7280,stroke-width:1px"
 	}
 
 	diagram.WriteString("        " + caller + arrow + callee + "\n")
