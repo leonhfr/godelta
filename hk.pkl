@@ -1,0 +1,73 @@
+amends "package://github.com/jdx/hk/releases/download/v2.3.1/hk@2.3.1#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.3.1/hk@2.3.1#/Builtins.pkl"
+
+fail_fast = false
+
+local checks = new Mapping<String, Step> {
+    ["actionlint"] = Builtins.actionlint
+    ["gitleaks"] = Builtins.gitleaks
+    ["golangci-build"] = {
+        check = "mise run golangci-build"
+    }
+    ["golangci-config"] = {
+        glob = List(".golangci.yml", ".custom-gcl.yml", "hk.pkl", "mise.toml")
+        depends = List("golangci-build")
+        check = "bin/godelta-golangci-lint config verify"
+    }
+    ["golangci-fmt"] = (Builtins.golangci_lint_fmt) {
+        depends = List("golangci-build")
+        check_diff = "bin/godelta-golangci-lint fmt --diff {{files}}"
+        fix = "bin/godelta-golangci-lint fmt {{files}}"
+    }
+    ["golangci-lint"] = (Builtins.golangci_lint) {
+        glob = List("**/*.go", "go.mod", "go.sum", ".golangci.yml", ".custom-gcl.yml", "hk.pkl", "mise.toml")
+        depends = List("golangci-build", "golangci-fmt", "gomod-tidy")
+        check = "bin/godelta-golangci-lint run --fix=false ./..."
+        fix = "bin/godelta-golangci-lint run --fix ./..."
+    }
+    ["gomod-tidy"] = Builtins.gomod_tidy
+    ["go-version"] = {
+        glob = List("go.mod", "mise.toml")
+        check = """
+            mod=$(awk '/^go /{print $2; exit}' go.mod)
+            pinned=$(awk -F'"' '/^go = /{print $2; exit}' mise.toml)
+            [ "$mod" = "$pinned" ] || { echo "go.mod declares go $mod, mise.toml pins go $pinned"; exit 1; }
+            """
+    }
+    ["json-fmt"] = Builtins.jq
+    ["large-files"] = Builtins.check_added_large_files
+    ["markdown-fmt"] = Builtins.rumdl_format
+    ["markdown-lint"] = Builtins.rumdl
+    ["merge-conflict"] = Builtins.check_merge_conflict
+    ["pinact"] = Builtins.pinact
+    ["test"] = {
+        glob = List("**/*.go", "go.mod", "go.sum", "**/testdata/**", "mise.toml", "hk.pkl")
+        interactive = true
+        check = "mise run test"
+    }
+    ["toml-fmt"] = Builtins.taplo_format
+    ["toml-lint"] = Builtins.taplo
+    ["typos"] = Builtins.typos
+    ["yaml-fmt"] = Builtins.yamlfmt
+    ["yaml-lint"] = Builtins.yamllint
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        steps = checks
+    }
+    // pinact calls the GitHub API; only pre-commit runs it, for staged workflow files.
+    ["check"] {
+        steps = checks.filter((name, _) -> name != "pinact")
+    }
+    ["fix"] {
+        fix = true
+        steps = checks.filter((name, _) -> name != "test" && name != "pinact")
+    }
+    ["commit-msg"] {
+        steps {
+            ["conventional-commit"] = Builtins.check_conventional_commit
+        }
+    }
+}

@@ -1,0 +1,12 @@
+version: v2.14.0
+name: godelta-golangci-lint
+destination: ./bin
+plugins:
+  - module: github.com/leonhfr/goblanklines
+    version: v0.1.0
+  - module: github.com/leonhfr/goexpand
+    version: v0.0.1
+  - module: github.com/leonhfr/goparamorder
+    version: v0.0.2
+  - module: github.com/swchck/commentlen
+    version: v0.2.0

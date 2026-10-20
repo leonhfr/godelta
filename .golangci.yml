@@ -1,0 +1,97 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - commentlen
+    - dupl
+    - errcheck
+    - errorlint
+    - exhaustive
+    - forcetypeassert
+    - funcorder
+    - goblanklines
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goexpand
+    - goparamorder
+    - gosec
+    - govet
+    - inamedparam
+    - ineffassign
+    - interfacebloat
+    - iotamixing
+    - misspell
+    - modernize
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - paralleltest
+    - perfsprint
+    - predeclared
+    - revive
+    - staticcheck
+    - testifylint
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
+  settings:
+    custom:
+      commentlen:
+        type: module
+        description: size and shape limits for Go comments
+        settings:
+          preset: strict
+          # Godoc list continuation lines look like code blocks to commentlen; check their width too.
+          ignore-code-blocks: false
+      goblanklines:
+        type: module
+        description: enforces blank lines
+      goexpand:
+        type: module
+        description: expands multiline declarations to one item per line
+      goparamorder:
+        type: module
+        description: enforces a configured parameter order in function declarations
+    funcorder:
+      function: true
+    gocyclo:
+      min-complexity: 16
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - gosec
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule
+    gofumpt:
+      extra:
+        balance-calls: true
+        clothe-returns: true
+    golines:
+      max-len: 150
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  fix: true
