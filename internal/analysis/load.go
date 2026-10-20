@@ -1,15 +1,14 @@
 package analysis
 
 import (
+	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -24,7 +23,7 @@ func Load(ctx context.Context, dir string) (Snapshot, error) {
 	}
 
 	if _, err = os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		return Snapshot{}, fmt.Errorf("expected a module root with go.mod: %w", err)
+		return Snapshot{}, fmt.Errorf("%w: expected a directory with go.mod: %w", ErrInvalidModule, err)
 	}
 
 	cfg := &packages.Config{
@@ -37,7 +36,7 @@ func Load(ctx context.Context, dir string) (Snapshot, error) {
 
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("load Go packages: %w", err)
+		return Snapshot{}, fmt.Errorf("%w: %w", ErrLoadPackages, err)
 	}
 
 	if err = packageErrors(pkgs); err != nil {
@@ -61,26 +60,30 @@ func Load(ctx context.Context, dir string) (Snapshot, error) {
 }
 
 func packageErrors(pkgs []*packages.Package) error {
-	var messages []string
+	var diagnostics []packages.Error
 	packages.Visit(
 		pkgs,
 		func(pkg *packages.Package) bool {
-			for _, err := range pkg.Errors {
-				messages = append(messages, err.Error())
-			}
+			diagnostics = append(diagnostics, pkg.Errors...)
 
 			return true
 		},
 		nil,
 	)
 
-	if len(messages) == 0 {
+	if len(diagnostics) == 0 {
 		return nil
 	}
 
-	slices.Sort(messages)
+	slices.SortFunc(diagnostics, func(left, right packages.Error) int {
+		if message := cmp.Compare(left.Error(), right.Error()); message != 0 {
+			return message
+		}
 
-	return errors.New("load Go packages:\n" + strings.Join(slices.Compact(messages), "\n"))
+		return cmp.Compare(left.Kind, right.Kind)
+	})
+	diagnostics = slices.Compact(diagnostics)
+	return &PackageErrors{Diagnostics: diagnostics}
 }
 
 type inventory struct {
