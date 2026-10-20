@@ -20,12 +20,9 @@ const (
 	formatTerminal format = "terminal"
 )
 
-func (value *format) String() string { return string(*value) }
-
-func (value *format) Set(text string) error {
+func validateFormat(text string) error {
 	switch format(text) {
 	case formatAuto, formatMermaid, formatTerminal:
-		*value = format(text)
 		return nil
 	}
 

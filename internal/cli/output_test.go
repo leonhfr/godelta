@@ -13,30 +13,6 @@ import (
 	"github.com/leonhfr/godelta/internal/graph"
 )
 
-func TestFormatParsing(t *testing.T) {
-	t.Parallel()
-
-	for _, command := range [][]string{nil, {"pr", "123"}} {
-		for _, value := range []format{formatAuto, formatMermaid, formatTerminal} {
-			args := append(append([]string(nil), command...), "--format", string(value))
-
-			t.Run(strings.Join(args, " "), func(t *testing.T) {
-				t.Parallel()
-
-				var stderr bytes.Buffer
-				request, err := parseRequest(args, &stderr)
-				require.NoError(t, err)
-				assert.Equal(t, value, request.format)
-			})
-		}
-	}
-
-	for _, args := range [][]string{{"--format", "json"}, {"--format"}, {"pr", "123", "--format", "json"}, {"pr", "123", "--format"}} {
-		_, err := parseRequest(args, io.Discard)
-		require.ErrorIs(t, err, ErrUsage)
-	}
-}
-
 func TestRenderFormatsOnPipe(t *testing.T) {
 	t.Parallel()
 

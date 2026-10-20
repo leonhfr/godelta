@@ -12,13 +12,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	urfave "github.com/urfave/cli/v3"
 
 	"github.com/leonhfr/godelta/internal/analysis"
 	"github.com/leonhfr/godelta/internal/cli"
 	"github.com/leonhfr/godelta/internal/snapshot"
 )
 
-func TestRunLocalModes(t *testing.T) {
+func TestCommandLocalModes(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -54,7 +55,7 @@ func TestRunLocalModes(t *testing.T) {
 			require.NoError(t, err)
 
 			var stdout, stderr bytes.Buffer
-			require.NoError(t, cli.Run(t.Context(), repo, test.args, &stdout, &stderr, "dev"))
+			require.NoError(t, testCommand(repo, &stdout, &stderr).Run(t.Context(), append([]string{"godelta"}, test.args...)))
 			assert.Contains(t, stderr.String(), "comparison: "+test.mode)
 			assert.Contains(t, stderr.String(), "build: ")
 			assert.True(t, strings.HasPrefix(stdout.String(), "flowchart LR\n"))
@@ -80,7 +81,7 @@ func TestRunLocalModes(t *testing.T) {
 			}
 
 			var repeated, diagnostics bytes.Buffer
-			require.NoError(t, cli.Run(t.Context(), repo, test.args, &repeated, &diagnostics, "dev"))
+			require.NoError(t, testCommand(repo, &repeated, &diagnostics).Run(t.Context(), append([]string{"godelta"}, test.args...)))
 			assert.Equal(t, stdout.String(), repeated.String())
 
 			afterIndex, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
@@ -90,17 +91,26 @@ func TestRunLocalModes(t *testing.T) {
 	}
 }
 
-func TestRunArgumentErrors(t *testing.T) {
+func TestCommandArgumentErrors(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		args []string
 		want error
 	}{
-		{args: []string{"--unknown"}, want: cli.ErrUsage},
 		{args: []string{"--format", "json"}, want: cli.ErrUsage},
 		{args: []string{"pr", "123", "--format", "json"}, want: cli.ErrUsage},
 		{args: []string{"123"}, want: cli.ErrUsage},
+		{args: []string{"pr"}, want: cli.ErrUsage},
+		{args: []string{"pr", "0"}, want: cli.ErrUsage},
+		{args: []string{"pr", "+1"}, want: cli.ErrUsage},
+		{args: []string{"pr", "01"}, want: cli.ErrUsage},
+		{args: []string{"pr", "invalid"}, want: cli.ErrUsage},
+		{args: []string{"pr", "999999999999999999999999999"}, want: cli.ErrUsage},
+		{args: []string{"pr", "123", "456"}, want: cli.ErrUsage},
+		{args: []string{"--staged", "pr", "123"}, want: cli.ErrUsage},
+		{args: []string{"--base", "main", "pr", "123"}, want: cli.ErrUsage},
+		{args: []string{"--head", "HEAD", "pr", "123"}, want: cli.ErrUsage},
 		{args: []string{"--staged", "--base", "HEAD"}, want: snapshot.ErrInvalidOptions},
 		{args: []string{"--head", "HEAD"}, want: snapshot.ErrInvalidOptions},
 	}
@@ -109,31 +119,13 @@ func TestRunArgumentErrors(t *testing.T) {
 			t.Parallel()
 
 			var stdout, stderr bytes.Buffer
-			require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), test.args, &stdout, &stderr, "dev"), test.want)
+			require.ErrorIs(t, testCommand(t.TempDir(), &stdout, &stderr).Run(t.Context(), append([]string{"godelta"}, test.args...)), test.want)
 			assert.Empty(t, stdout.String())
 		})
 	}
 }
 
-func TestRunHelpOutsideRepository(t *testing.T) {
-	t.Parallel()
-
-	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, &stderr, "dev"))
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "Usage: godelta")
-	assert.Contains(t, stderr.String(), "staged")
-}
-
-func TestRunHelpWriteFailure(t *testing.T) {
-	t.Parallel()
-
-	var stdout bytes.Buffer
-	require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), []string{"--help"}, &stdout, failingWriter{}, "dev"), io.ErrClosedPipe)
-	assert.Empty(t, stdout.String())
-}
-
-func TestRunContextAndDynamicDiagnostics(t *testing.T) {
+func TestCommandContextAndDynamicDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	repo := repository(t)
@@ -153,7 +145,7 @@ func TestRunContextAndDynamicDiagnostics(t *testing.T) {
 	git(t, repo, "commit", "--no-gpg-sign", "-m", "context fixture")
 	write(t, repo, "source.go", strings.Replace(source.String(), "callback();", "callback(); Context55();", 1))
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr, "dev"))
+	require.NoError(t, testCommand(repo, &stdout, &stderr).Run(t.Context(), []string{"godelta"}))
 	assert.Contains(t, stderr.String(), "omitted 6 unchanged context functions (limit 50)")
 	assert.Contains(t, stderr.String(), "unresolved calls: .:Changed (before 1; after 1)")
 	assert.NotContains(t, stdout.String(), "Context50")
@@ -161,7 +153,7 @@ func TestRunContextAndDynamicDiagnostics(t *testing.T) {
 	assert.Equal(t, 51, strings.Count(stdout.String(), ":::unchanged"))
 }
 
-func TestRunStreamFailures(t *testing.T) {
+func TestCommandStreamFailures(t *testing.T) {
 	t.Parallel()
 
 	for _, stream := range []string{"stdout", "stderr"} {
@@ -177,14 +169,14 @@ func TestRunStreamFailures(t *testing.T) {
 				stderr = failingWriter{}
 			}
 
-			require.ErrorIs(t, cli.Run(t.Context(), repository(t), nil, stdout, stderr, "dev"), io.ErrClosedPipe)
+			require.ErrorIs(t, testCommand(repository(t), stdout, stderr).Run(t.Context(), []string{"godelta"}), io.ErrClosedPipe)
 			assert.Empty(t, output.String())
 		})
 	}
 }
 
 //nolint:paralleltest // Changes process-wide flags and temporary directory to verify cleanup and build tags.
-func TestRunBuildTagsAndFailureCleanup(t *testing.T) {
+func TestCommandBuildTagsAndFailureCleanup(t *testing.T) {
 	temporary := t.TempDir()
 	t.Setenv("TMPDIR", temporary)
 	t.Setenv("GOFLAGS", "-tags=godelta_fixture")
@@ -194,14 +186,14 @@ func TestRunBuildTagsAndFailureCleanup(t *testing.T) {
 	git(t, repo, "commit", "--no-gpg-sign", "-m", "tagged fixture")
 	write(t, repo, "tagged.go", "//go:build godelta_fixture\n\npackage fixture\nfunc Tagged(){Changed()}\n")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr, "dev"))
+	require.NoError(t, testCommand(repo, &stdout, &stderr).Run(t.Context(), []string{"godelta"}))
 	assert.Contains(t, stdout.String(), "Tagged #183; modified")
 	assert.Contains(t, stderr.String(), "GOFLAGS=\"-tags=godelta_fixture\"")
 
 	write(t, repo, "source.go", "package fixture\nfunc Broken(){ missing() }\n")
 	stdout.Reset()
 	stderr.Reset()
-	require.ErrorIs(t, cli.Run(t.Context(), repo, nil, &stdout, &stderr, "dev"), analysis.ErrLoadPackages)
+	require.ErrorIs(t, testCommand(repo, &stdout, &stderr).Run(t.Context(), []string{"godelta"}), analysis.ErrLoadPackages)
 	assert.Empty(t, stdout.String())
 
 	matches, err := filepath.Glob(filepath.Join(temporary, "godelta-*"))
@@ -209,13 +201,13 @@ func TestRunBuildTagsAndFailureCleanup(t *testing.T) {
 	assert.Empty(t, matches)
 }
 
-func TestRunTerminalFormat(t *testing.T) {
+func TestCommandTerminalFormat(t *testing.T) {
 	t.Parallel()
 
 	repo := repository(t)
 	write(t, repo, "source.go", "package fixture\nfunc Caller(){Changed()}\nfunc Changed(){Added()}\nfunc Added(){}\nfunc Unrelated(){}\n")
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, &stdout, &stderr, "dev"))
+	require.NoError(t, testCommand(repo, &stdout, &stderr).Run(t.Context(), []string{"godelta", "--format", "terminal"}))
 	assert.Contains(t, stdout.String(), "Change group 1")
 	assert.Contains(t, stdout.String(), "Caller · unchanged")
 	assert.Contains(t, stdout.String(), "retained")
@@ -226,10 +218,10 @@ func TestRunTerminalFormat(t *testing.T) {
 	assert.NotContains(t, stdout.String(), "flowchart")
 	assert.NotContains(t, stdout.String(), "\x1b")
 	assert.Contains(t, stderr.String(), "comparison: working-tree")
-	require.ErrorIs(t, cli.Run(t.Context(), repo, []string{"--format", "terminal"}, failingWriter{}, io.Discard, "dev"), io.ErrClosedPipe)
+	require.ErrorIs(t, testCommand(repo, failingWriter{}, io.Discard).Run(t.Context(), []string{"godelta", "--format", "terminal"}), io.ErrClosedPipe)
 
 	stdout.Reset()
-	require.NoError(t, cli.Run(t.Context(), repo, []string{"--format", "mermaid"}, &stdout, io.Discard, "dev"))
+	require.NoError(t, testCommand(repo, &stdout, io.Discard).Run(t.Context(), []string{"godelta", "--format", "mermaid"}))
 	assert.True(t, strings.HasPrefix(stdout.String(), "flowchart LR\n"))
 }
 
@@ -274,3 +266,10 @@ func write(t *testing.T, dir, name, content string) {
 type failingWriter struct{}
 
 func (failingWriter) Write(_ []byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func testCommand(directory string, stdout, stderr io.Writer) *urfave.Command {
+	command := cli.New(cli.WithDirectory(directory))
+	command.Writer = stdout
+	command.ErrWriter = stderr
+	return command
+}

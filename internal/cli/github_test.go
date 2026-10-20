@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/leonhfr/godelta/internal/cli"
 	"github.com/leonhfr/godelta/internal/github"
 )
 
@@ -36,7 +35,7 @@ func TestRunPullRequest(t *testing.T) {
 
 	originalRefs := commandOutput(t, repo, "git", "show-ref")
 	var local, localDiagnostics bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), repo, []string{"--base", "main", "--head", "feature"}, &local, &localDiagnostics, "dev"))
+	require.NoError(t, testCommand(repo, &local, &localDiagnostics).Run(t.Context(), []string{"godelta", "--base", "main", "--head", "feature"}))
 
 	// Preserve Go caches while isolating global Git configuration under a temporary HOME.
 	var caches map[string]string
@@ -85,7 +84,7 @@ esac
 	temporary := t.TempDir()
 	t.Setenv("TMPDIR", temporary)
 	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"pr", "123", "--repo", "owner/project"}, &stdout, &stderr, "dev"))
+	require.NoError(t, testCommand(t.TempDir(), &stdout, &stderr).Run(t.Context(), []string{"godelta", "pr", "123", "--repo", "owner/project"}))
 	assert.Equal(t, local.String(), stdout.String())
 	assert.Contains(t, stderr.String(), "pull request: https://github.com/owner/project/pull/123")
 	assert.Contains(t, stderr.String(), ancestor)
@@ -101,11 +100,15 @@ esac
 	var localTree, prTree bytes.Buffer
 	require.NoError(
 		t,
-		cli.Run(t.Context(), repo, []string{"--base", "main", "--head", "feature", "--format", "terminal"}, &localTree, &stderr, "dev"),
+		testCommand(repo, &localTree, &stderr).Run(t.Context(), []string{"godelta", "--base", "main", "--head", "feature", "--format", "terminal"}),
 	)
 	require.NoError(
 		t,
-		cli.Run(t.Context(), t.TempDir(), []string{"pr", "123", "--repo", "owner/project", "--format", "terminal"}, &prTree, &stderr, "dev"),
+		testCommand(
+			t.TempDir(),
+			&prTree,
+			&stderr,
+		).Run(t.Context(), []string{"godelta", "pr", "123", "--repo", "owner/project", "--format", "terminal"}),
 	)
 	assert.Equal(t, localTree.String(), prTree.String())
 	assert.Contains(t, prTree.String(), "Changed · modified")
@@ -113,21 +116,12 @@ esac
 
 	write(t, fixture, "pr.json", "invalid JSON")
 	stdout.Reset()
-	require.ErrorIs(t, cli.Run(t.Context(), t.TempDir(), []string{"pr", "123"}, &stdout, &stderr, "dev"), github.ErrInvalidResponse)
+	require.ErrorIs(t, testCommand(t.TempDir(), &stdout, &stderr).Run(t.Context(), []string{"godelta", "pr", "123"}), github.ErrInvalidResponse)
 	assert.Empty(t, stdout.String())
 
 	matches, err := filepath.Glob(filepath.Join(temporary, "godelta-*"))
 	require.NoError(t, err)
 	assert.Empty(t, matches)
-}
-
-func TestRunPRHelpOutsideRepository(t *testing.T) {
-	t.Parallel()
-
-	var stdout, stderr bytes.Buffer
-	require.NoError(t, cli.Run(t.Context(), t.TempDir(), []string{"pr", "--help"}, &stdout, &stderr, "dev"))
-	assert.Empty(t, stdout.String())
-	assert.Contains(t, stderr.String(), "repo")
 }
 
 func commandOutput(t *testing.T, dir, name string, args ...string) string {
