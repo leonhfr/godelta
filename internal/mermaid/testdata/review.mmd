@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph component_0["Change group 1"]
+        f_6b02e0d363a4af1c95eef50364bb0202c8b250aa05a48a69e68fd7787b4b0632["helpers.Added #183; added"]:::added
+        f_9bc9b83c11ddcb417258094c42d71f0b548df6b26b39b91e64042143f19112e7["Caller #183; unchanged"]:::unchanged
+        f_2a6141e43be0c2125e3b5d9f74b4ff1261a0b320ff927c83d4d9b1b65585bad7["(*Worker).Run #183; modified"]:::modified
+        f_4118fb4fed0ecec996876cae9dc97177e50fb5f8702ddd8a26eff63813cfd6aa["helpers.OldHelper #183; removed"]:::removed
+        f_9bc9b83c11ddcb417258094c42d71f0b548df6b26b39b91e64042143f19112e7 -->|retained| f_2a6141e43be0c2125e3b5d9f74b4ff1261a0b320ff927c83d4d9b1b65585bad7
+        f_2a6141e43be0c2125e3b5d9f74b4ff1261a0b320ff927c83d4d9b1b65585bad7 -->|added| f_6b02e0d363a4af1c95eef50364bb0202c8b250aa05a48a69e68fd7787b4b0632
+        f_2a6141e43be0c2125e3b5d9f74b4ff1261a0b320ff927c83d4d9b1b65585bad7 -. removed .-> f_4118fb4fed0ecec996876cae9dc97177e50fb5f8702ddd8a26eff63813cfd6aa
+    end
+    subgraph component_1["Change group 2"]
+        f_13758a65cfccdbc034b6a08a2cee4f22326cc9d37d7235ecada8cd1da317e734["pkg-odd.v1.孤立 #183; removed"]:::removed
+    end
+    subgraph legend["Legend · arrows point from caller to callee"]
+        legend_added["Added function"]:::added
+        legend_removed["Removed function"]:::removed
+        legend_modified["Modified function"]:::modified
+        legend_context["Unchanged context"]:::unchanged
+        legend_added -->|added| legend_modified
+        legend_modified -. removed .-> legend_removed
+        legend_context -->|retained| legend_modified
+    end
+    classDef added fill:#dcfce7,stroke:#15803d,color:#111;
+    classDef removed fill:#fee2e2,stroke:#b91c1c,color:#111;
+    classDef modified fill:#e5e7eb,stroke:#6b7280,color:#111;
+    classDef unchanged fill:#dbeafe,stroke:#2563eb,color:#111;
+    linkStyle 0 stroke:#6b7280;
+    linkStyle 1 stroke:#15803d,stroke-width:2px;
+    linkStyle 2 stroke:#b91c1c,stroke-width:2px;
+    linkStyle 3 stroke:#15803d,stroke-width:2px;
+    linkStyle 4 stroke:#b91c1c,stroke-width:2px;
+    linkStyle 5 stroke:#6b7280;

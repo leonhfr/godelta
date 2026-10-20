@@ -1,18 +1,60 @@
 # godelta
 
-Go function call graphs scoped to a Git diff. Currently in development.
+Generate a Mermaid call graph of Go function changes in a local Git checkout.
 
-The analysis foundation loads a single module, inventories functions and methods, and resolves direct calls across packages. It gives closures and `init` declarations their own names, ignores formatting and comments when fingerprinting functions, and excludes tests and generated functions. Dynamic calls are counted without guessing their targets. The snapshot layer prepares isolated working-tree, staged-only, and merge-base comparisons without changing the checkout, index, or refs. Working-tree mode includes nonignored untracked files; staged-only mode reads the index and excludes intent-to-add files. Both sides retain supporting files needed for analysis, such as embedded assets.
+## Usage
 
-Snapshots currently require a module at the repository root. Workspaces, nested modules, local module replacements, symlinks, submodules, and sparse working checkouts are unsupported and produce explicit errors.
+Build with the pinned Go toolchain:
 
-The delta layer classifies functions as added, removed, modified, or unchanged and calls as added, removed, or retained. It preserves both versions of each function for source locations and diagnostics, with deterministic ordering and no mutation of the input snapshots. Renames and package moves appear as removal plus addition; moves between files within a package preserve function identity.
+```sh
+mise install
+mise exec -- go build -o godelta .
+```
 
-Scoped graph selection and Mermaid output are not implemented yet; the executable remains a placeholder.
+Run the binary from the Go repository you want to review, or any subdirectory of it:
+
+```sh
+godelta > graph.mmd                       # HEAD versus the working tree
+godelta --staged > graph.mmd              # HEAD versus staged content only
+godelta --base main > graph.mmd           # Merge base with main versus the working tree
+godelta --base main --head HEAD > graph.mmd # Merge base with main versus committed HEAD
+godelta --help
+```
+
+Use `./godelta` when reviewing this checkout, or put the built binary on your PATH for other repositories. Working-tree mode includes staged edits, unstaged edits, and nonignored untracked files. Staged mode excludes unstaged edits and files marked only with `git add -N`. `--head` requires `--base`; `--staged` cannot be combined with either.
+
+Stdout contains one raw Mermaid flowchart. Stderr reports resolved revisions, the active Go platform and flags, omitted context, and unresolved call counts. No function changes produces a valid explanatory diagram and a successful exit. Invalid inputs, analysis failures, and output failures produce a nonzero exit.
+
+## Reading the graph
+
+Every added, removed, or modified function appears, along with its direct project-local callers and callees from either revision. Context does not expand recursively. Disconnected groups share one flowchart, with up to 50 unchanged context functions per group. Changed functions never count against that limit and are never omitted. Context is selected in canonical name order, with omission counts on stderr.
+
+| Function status | Color |
+| --- | --- |
+| Added | Green |
+| Removed | Red |
+| Modified | Grey |
+| Unchanged context | Pale blue |
+
+Arrows point from caller to callee. Added calls are green, removed calls are dashed red, and retained calls are grey. Nodes and arrows include status words, and the graph includes a legend.
+
+## Analysis scope
+
+Functions are matched by package, receiver type, and name, and compared by their signatures and bodies. Formatting and comments are ignored. File moves within a package preserve identity; renames and package moves appear as removal plus addition. Global variables, constants, and struct declarations do not seed changes.
+
+Anonymous functions have separate nodes named after their parent, such as `Save.anonymous.1`. Init declarations use file names, such as `storage.go.init.1`. Counters follow source order and may shift after insertions. Calls inside a closure belong to the closure; declaring it does not imply calling it.
+
+Direct calls, concrete methods, generic calls, and immediately invoked function literals are resolved. Interface dispatch and calls through function values are counted as unresolved; targets are not guessed. Tests, generated functions, vendor functions, and external dependency nodes are excluded. Analysis covers only the active build configuration; use Go environment settings such as `GOFLAGS='-tags=integration'` to select build tags.
+
+The repository must contain one module at its root. Workspaces, actual nested modules, local module replacements, symlinks, submodules, and sparse working checkouts are currently unsupported. Nested testdata, vendor, and hidden module fixtures are outside layout checks. A committed HEAD and analyzable code on both sides are required.
+
+Snapshots are copied into temporary directories without checking out revisions, writing the index, or moving refs, and are removed on success or failure. Supporting files, including embedded assets, are copied too. The tool never runs project binaries, tests, or generators. Go tooling must be installed; package loading may resolve dependencies using Go's module cache and network settings. Module files are loaded read-only.
+
+GitHub PR input and the GitHub CLI extension are planned.
 
 ## Development
 
-Install the pinned tools and Git hooks with `mise install`, then use:
+Use the pinned tools and Git hooks from `mise install`:
 
 ```sh
 mise run fix    # Apply formatting and available fixes without staging files
@@ -20,4 +62,4 @@ mise run check  # Verify formatting, lint, module tidiness, and race tests
 mise run test   # Run race tests independently
 ```
 
-The check and fix tasks build `bin/godelta-golangci-lint` with the custom `commentlen`, `goblanklines`, `goexpand`, and `goparamorder` linters.
+The check and fix tasks build `bin/godelta-golangci-lint` with the custom `commentlen`, `goblanklines`, `goexpand`, and `goparamorder` linters. Tests use Testify; error assertions use error categories and structured diagnostics rather than message matching.
