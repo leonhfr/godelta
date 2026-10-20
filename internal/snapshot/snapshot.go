@@ -30,7 +30,7 @@ type Options struct {
 	Head   string
 }
 
-// Comparison owns temporary module directories until Close is called.
+// Comparison owns temporary repository directories until Close is called.
 // HeadCommit is the resolved head underlying the selected comparison mode.
 type Comparison struct {
 	Before     string
@@ -42,7 +42,7 @@ type Comparison struct {
 }
 
 // Prepare copies both sides without modifying the repository, index, or refs.
-// dir may be anywhere inside a checkout whose root contains a single Go module.
+// dir may be anywhere inside a checkout containing one or more Go modules.
 func Prepare(ctx context.Context, dir string, options Options) (*Comparison, error) {
 	if err := options.validate(); err != nil {
 		return nil, err

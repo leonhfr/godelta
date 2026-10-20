@@ -5,58 +5,91 @@ import (
 	"context"
 	"fmt"
 	"go/ast"
-	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"slices"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/leonhfr/godelta/internal/project"
 )
 
-// Load analyzes the module rooted at dir using the current Go build environment.
-// It excludes test and generated functions and never runs project code.
-// Package loading uses read-only module mode and disables workspace discovery.
+// Load analyzes all discovered repository modules under the current build environment.
+// Root workspace members load together; other modules load independently.
+// Package loading is read-only and never discovers workspaces outside the repository.
 func Load(ctx context.Context, dir string) (Snapshot, error) {
-	root, err := filepath.Abs(dir)
+	layout, err := project.Discover(dir)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("resolve module directory: %w", err)
-	}
-
-	if _, err = os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		return Snapshot{}, fmt.Errorf("%w: expected a directory with go.mod: %w", ErrInvalidModule, err)
-	}
-
-	cfg := &packages.Config{
-		Context:    ctx,
-		Dir:        root,
-		Mode:       packages.LoadSyntax | packages.NeedModule,
-		Env:        append(os.Environ(), "GOWORK=off"),
-		BuildFlags: []string{"-mod=readonly"},
-	}
-
-	pkgs, err := packages.Load(cfg, "./...")
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("%w: %w", ErrLoadPackages, err)
-	}
-
-	if err = packageErrors(pkgs); err != nil {
 		return Snapshot{}, err
 	}
 
-	inventory := newInventory(root)
-	for _, pkg := range pkgs {
-		if pkg.Module == nil || !pkg.Module.Main {
-			continue
+	inventory := newInventory(layout.Root)
+	for _, group := range loadGroups(layout) {
+		cfg := &packages.Config{
+			Context:    ctx,
+			Dir:        group.directory,
+			Mode:       packages.LoadSyntax | packages.NeedModule,
+			Env:        append(os.Environ(), "GOWORK="+group.workspace),
+			BuildFlags: []string{"-mod=readonly"},
+		}
+		pkgs, err := packages.Load(cfg, group.patterns...)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("%w: %w", ErrLoadPackages, err)
 		}
 
-		if err = inventory.addPackage(pkg); err != nil {
+		if err = packageErrors(pkgs); err != nil {
 			return Snapshot{}, err
+		}
+
+		inventory.rememberPackages(pkgs, layout)
+		for _, pkg := range pkgs {
+			if pkg.Module == nil || !pkg.Module.Main {
+				continue
+			}
+
+			if err = inventory.addPackage(pkg); err != nil {
+				return Snapshot{}, err
+			}
 		}
 	}
 
 	inventory.findCalls()
-
 	return inventory.snapshot, nil
+}
+
+type loadGroup struct {
+	directory string
+	workspace string
+	patterns  []string
+}
+
+func loadGroups(layout project.Layout) []loadGroup {
+	var groups []loadGroup
+	workspace := loadGroup{directory: layout.Root}
+	if layout.Workspace != nil {
+		workspace.workspace = layout.Workspace.File
+	}
+
+	for _, module := range layout.Modules {
+		if layout.Workspace != nil && layout.Workspace.Members[module.Directory] {
+			relative, _ := filepath.Rel(layout.Root, module.Directory)
+			pattern := "./..."
+			if relative != "." {
+				pattern = "./" + filepath.ToSlash(relative) + "/..."
+			}
+
+			workspace.patterns = append(workspace.patterns, pattern)
+		} else {
+			groups = append(groups, loadGroup{directory: module.Directory, workspace: "off", patterns: []string{"./..."}})
+		}
+	}
+
+	if len(workspace.patterns) != 0 {
+		groups = append(groups, workspace)
+	}
+
+	return groups
 }
 
 func packageErrors(pkgs []*packages.Package) error {
@@ -87,19 +120,21 @@ func packageErrors(pkgs []*packages.Package) error {
 }
 
 type inventory struct {
-	root     string
-	snapshot Snapshot
-	bodies   []functionBody
-	objects  map[token.Pos]ID
-	literals map[*ast.FuncLit]ID
+	root        string
+	snapshot    Snapshot
+	bodies      []functionBody
+	objects     map[functionSymbol]ID
+	directories map[*types.Package]string
+	literals    map[*ast.FuncLit]ID
 }
 
 func newInventory(root string) *inventory {
 	return &inventory{
-		root:     root,
-		snapshot: Snapshot{Functions: make(map[ID]Function)},
-		objects:  make(map[token.Pos]ID),
-		literals: make(map[*ast.FuncLit]ID),
+		root:        root,
+		snapshot:    Snapshot{Functions: make(map[ID]Function)},
+		objects:     make(map[functionSymbol]ID),
+		directories: make(map[*types.Package]string),
+		literals:    make(map[*ast.FuncLit]ID),
 	}
 }
 

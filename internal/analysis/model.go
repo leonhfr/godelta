@@ -1,4 +1,4 @@
-// Package analysis inventories Go functions and their direct calls in one module.
+// Package analysis inventories Go functions and their direct calls across repository modules.
 package analysis
 
 import "crypto/sha256"
@@ -6,7 +6,7 @@ import "crypto/sha256"
 // ID identifies a declaration independently of its absolute checkout location.
 type ID string
 
-// Function describes a declaration or function literal in a module snapshot.
+// Function describes a declaration or function literal in a repository snapshot.
 type Function struct {
 	ID      ID
 	Name    string

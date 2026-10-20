@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/leonhfr/godelta/internal/project"
 )
 
 type entry struct {
@@ -110,7 +112,7 @@ func (repo repository) materialize(ctx context.Context, comparison *Comparison) 
 	}
 
 	for _, dir := range []string{comparison.Before, comparison.After} {
-		if err = validateModule(dir); err != nil {
+		if _, err = project.Discover(dir); err != nil {
 			return err
 		}
 	}

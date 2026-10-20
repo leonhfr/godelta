@@ -25,6 +25,14 @@ godelta --base main --head HEAD   # Merge base with main → committed HEAD
 
 `--staged` cannot be combined with `--base` or `--head`. `--head` requires `--base`.
 
+## Multiple modules
+
+Godelta discovers modules throughout the repository; a root `go.mod` is optional. Running from a nested module still reviews the whole repository.
+
+A root `go.work` controls resolution for its listed modules. Other discovered modules load independently with workspace mode disabled. Relative local replacements are supported when they point to another discovered module inside the repository. Without a workspace or replacement, imports keep their normal module resolution; Godelta does not invent links between sibling modules.
+
+Modules under `testdata`, `vendor`, hidden directories, and directories starting with `_` are excluded from discovery. Nested workspaces and absolute or outside-repository module references are unsupported. Each revision uses its own module and workspace configuration, so added and removed modules appear in the graph.
+
 ## Pull requests
 
 ```sh
@@ -64,7 +72,7 @@ Arrows point from caller to callee and are labelled added, removed, or retained.
 - Renames and package moves appear as removal plus addition. Anonymous functions use `Parent.anonymous.1`; init functions use `file.go.init.1`. Numbering follows source order and may shift after insertions.
 - Direct calls, concrete methods, and generic calls are resolved. Interface dispatch and function-value calls are counted as unresolved, without guessed targets.
 - Tests, generated functions, vendor code, and external dependency nodes are excluded.
-- One module at the repository root is supported, with any number of packages. Workspaces, local replacements, nested modules outside fixture/vendor/hidden directories, symlinks, submodules, and sparse checkouts are unsupported.
+- Symlinks, Git submodules, and sparse checkouts are unsupported. Each revision must contain at least one discoverable Go module.
 - Both revisions must type-check under the active Go build configuration. Select build tags with `GOFLAGS='-tags=integration'`. Package loading may download dependencies; Godelta does not run project tests, binaries, or generators.
 
 No function changes is a successful result. Use `godelta --help`, `godelta pr --help`, or `godelta --version` for command information.

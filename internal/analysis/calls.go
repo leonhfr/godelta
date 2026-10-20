@@ -50,7 +50,7 @@ func (inventory *inventory) addCall(fn functionBody, call *ast.CallExpr, calls m
 	}
 
 	if target := typeutil.StaticCallee(fn.pkg.TypesInfo, call); target != nil {
-		if id, included := inventory.objects[target.Pos()]; included {
+		if id, included := inventory.objects[inventory.symbolFor(target)]; included {
 			calls[Call{Caller: fn.id, Callee: id}] = struct{}{}
 		}
 

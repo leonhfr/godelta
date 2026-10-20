@@ -1,6 +1,10 @@
 package snapshot
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/leonhfr/godelta/internal/project"
+)
 
 var (
 	// ErrInvalidOptions indicates an incompatible comparison selection.
@@ -12,9 +16,9 @@ var (
 	// ErrMergeConflict indicates unresolved index entries.
 	ErrMergeConflict = errors.New("unresolved merge conflicts")
 	// ErrUnsupportedLayout indicates inputs unsupported by isolated snapshots.
-	ErrUnsupportedLayout = errors.New("unsupported repository layout")
-	// ErrInvalidModule indicates a missing or invalid root module declaration.
-	ErrInvalidModule = errors.New("invalid Go module")
+	ErrUnsupportedLayout = project.ErrUnsupportedLayout
+	// ErrInvalidModule indicates missing or invalid module/workspace configuration.
+	ErrInvalidModule = project.ErrInvalidModule
 	// ErrInvalidPath indicates a path that cannot be included in a snapshot.
 	ErrInvalidPath = errors.New("invalid repository path")
 	// ErrInvalidGitOutput indicates malformed Git object or tree data.

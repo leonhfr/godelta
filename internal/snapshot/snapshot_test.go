@@ -176,8 +176,6 @@ func TestPrepareUnsupportedLayouts(t *testing.T) {
 		want  error
 	}{
 		{name: "missing module", files: map[string]string{"go.mod": ""}, want: snapshot.ErrInvalidModule},
-		{name: "workspace", files: map[string]string{"go.work": "go 1.27.1\nuse .\n"}, want: snapshot.ErrUnsupportedLayout},
-		{name: "nested module", files: map[string]string{"nested/go.mod": "module example.com/nested\n"}, want: snapshot.ErrUnsupportedLayout},
 		{
 			name:  "local replacement",
 			files: map[string]string{"go.mod": "module example.com/fixture\nreplace example.com/other => ../other\n"},
@@ -262,7 +260,7 @@ func TestPrepareFailureCleanup(t *testing.T) {
 	temporary := t.TempDir()
 	t.Setenv("TMPDIR", temporary)
 	repo := fixtureRepository(t)
-	write(t, repo, "go.work", "go 1.27.1\nuse .\n")
+	write(t, repo, "go.work", "go 1.27.1\nuse ../outside\n")
 	_, err := snapshot.Prepare(t.Context(), repo, snapshot.Options{})
 	require.ErrorIs(t, err, snapshot.ErrUnsupportedLayout)
 

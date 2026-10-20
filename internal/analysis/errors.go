@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/leonhfr/godelta/internal/project"
 )
 
 var (
-	// ErrInvalidModule indicates that the selected directory is not a module root.
-	ErrInvalidModule = errors.New("invalid Go module root")
+	// ErrInvalidModule indicates missing or invalid module/workspace configuration.
+	ErrInvalidModule = project.ErrInvalidModule
 	// ErrLoadPackages indicates that Go packages could not be loaded or checked.
 	ErrLoadPackages = errors.New("load Go packages")
 )

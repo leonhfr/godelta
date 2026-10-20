@@ -17,9 +17,21 @@ import (
 //nolint:paralleltest // Installs isolated gh and Git configuration through process-wide environment variables.
 func TestRunPullRequest(t *testing.T) {
 	repo := repository(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "support"), 0o750))
+
+	write(t, repo, "support/go.mod", "module example.com/support\n\ngo 1.27.1\n")
+	write(t, repo, "support/source.go", "package support\nfunc Leaf(){}\n")
+	write(t, repo, "go.work", "go 1.27.1\nuse (\n .\n ./support\n)\n")
+	git(t, repo, "add", "--all")
+	git(t, repo, "commit", "--no-gpg-sign", "-m", "workspace fixture")
 	ancestor := commandOutput(t, repo, "git", "rev-parse", "HEAD")
 	git(t, repo, "checkout", "-b", "feature")
-	write(t, repo, "source.go", "package fixture\nfunc Caller(){Changed()}\nfunc Changed(){Added()}\nfunc Added(){}\nfunc Unrelated(){}\n")
+	write(
+		t,
+		repo,
+		"source.go",
+		"package fixture\nimport \"example.com/support\"\nfunc Caller(){Changed()}\nfunc Changed(){Added();support.Leaf()}\nfunc Added(){}\nfunc Unrelated(){}\n",
+	)
 	git(t, repo, "add", "--all")
 	git(t, repo, "commit", "--no-gpg-sign", "-m", "feature")
 	head := commandOutput(t, repo, "git", "rev-parse", "HEAD")
@@ -91,6 +103,7 @@ esac
 	assert.Contains(t, stderr.String(), head)
 	assert.NotContains(t, stdout.String(), "Dirty")
 	assert.NotContains(t, stdout.String(), "BaseOnly")
+	assert.Contains(t, stdout.String(), "support.Leaf #183; unchanged")
 
 	afterIndex, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
 	require.NoError(t, err)

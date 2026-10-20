@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/leonhfr/godelta/internal/project"
 )
 
 func (inventory *inventory) addPackage(pkg *packages.Package) error {
@@ -52,7 +54,12 @@ func (inventory *inventory) addPackage(pkg *packages.Package) error {
 				return err
 			}
 
-			inventory.objects[fn.Name.Pos()] = id
+			object, ok := pkg.TypesInfo.Defs[fn.Name].(*types.Func)
+			if !ok {
+				return fmt.Errorf("missing function type for %s", id)
+			}
+
+			inventory.objects[inventory.symbolFor(object)] = id
 		}
 	}
 
@@ -174,4 +181,47 @@ func fingerprint(fset *token.FileSet, node ast.Node) ([sha256.Size]byte, error) 
 	}
 
 	return sha256.Sum256([]byte(normalized.String())), nil
+}
+
+// Resolved package directories distinguish local code from downloaded module versions.
+type functionSymbol struct {
+	directory string
+	receiver  string
+	name      string
+}
+
+func (inventory *inventory) symbolFor(object *types.Func) functionSymbol {
+	origin := object.Origin()
+	symbol := functionSymbol{directory: inventory.directories[origin.Pkg()], name: origin.Name()}
+	if receiver := origin.Signature().Recv(); receiver != nil {
+		base := types.Unalias(receiver.Type())
+		if pointer, ok := base.(*types.Pointer); ok {
+			base = types.Unalias(pointer.Elem())
+		}
+
+		if named, ok := base.(*types.Named); ok {
+			symbol.receiver = named.Obj().Name()
+		}
+	}
+
+	return symbol
+}
+
+func (inventory *inventory) rememberPackages(pkgs []*packages.Package, layout project.Layout) {
+	modules := make(map[string]bool, len(layout.Modules))
+	for _, module := range layout.Modules {
+		modules[module.Directory] = true
+	}
+
+	packages.Visit(
+		pkgs,
+		func(pkg *packages.Package) bool {
+			if pkg.Module != nil && modules[pkg.Module.Dir] && len(pkg.GoFiles) != 0 {
+				inventory.directories[pkg.Types] = filepath.Dir(pkg.GoFiles[0])
+			}
+
+			return true
+		},
+		nil,
+	)
 }
